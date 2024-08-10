@@ -3,7 +3,7 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'true'
 
 import sys
-import tensorflow as tf
+# import tensorflow as tf
 import numpy as np
 import imageio
 import json
@@ -707,7 +707,7 @@ def train():
     if args.lrate_decay > 0:
         lrate = tf.keras.optimizers.schedules.ExponentialDecay(lrate,
                                                                decay_steps=args.lrate_decay * 1000, decay_rate=0.1)
-    optimizer = tf.keras.optimizers.Adam(lrate)
+    optimizer = tf.keras.optimizers.legacy.Adam(lrate)
     models['optimizer'] = optimizer
 
     global_step = tf.compat.v1.train.get_or_create_global_step()
@@ -751,8 +751,8 @@ def train():
     print('VAL views are', i_val)
 
     # Summary writers
-    writer = tf.contrib.summary.create_file_writer(
-        os.path.join(basedir, 'summaries', expname))
+    writer = tf.compat.v2.summary.create_file_writer(
+        logdir=os.path.join(basedir, 'summaries', expname))
     writer.set_as_default()
 
     for i in range(start, N_iters):
@@ -877,11 +877,11 @@ def train():
             print(expname, i, psnr.numpy(), loss.numpy(), global_step.numpy())
             print('iter time {:.05f}'.format(dt))
             with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
-                tf.contrib.summary.scalar('loss', loss)
-                tf.contrib.summary.scalar('psnr', psnr)
-                tf.contrib.summary.histogram('tran', trans)
+                tf.compat.v2.summary.scalar(name='loss', data=loss, step=tf.compat.v1.train.get_or_create_global_step())
+                tf.compat.v2.summary.scalar(name='psnr', data=psnr, step=tf.compat.v1.train.get_or_create_global_step())
+                tf.compat.v2.summary.histogram(name='tran', data=trans, step=tf.compat.v1.train.get_or_create_global_step())
                 if args.N_importance > 0:
-                    tf.contrib.summary.scalar('psnr0', psnr0)
+                    tf.compat.v2.summary.scalar(name='psnr0', data=psnr0, step=tf.compat.v1.train.get_or_create_global_step())
 
             if i % args.i_img == 0:
 
@@ -903,24 +903,24 @@ def train():
 
                 with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
 
-                    tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
-                    tf.contrib.summary.image(
-                        'disp', disp[tf.newaxis, ..., tf.newaxis])
-                    tf.contrib.summary.image(
-                        'acc', acc[tf.newaxis, ..., tf.newaxis])
+                    tf.compat.v2.summary.image(name='rgb', data=to8b(rgb)[tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
+                    tf.compat.v2.summary.image(
+                        name='disp', data=disp[tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
+                    tf.compat.v2.summary.image(
+                        name='acc', data=acc[tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
 
-                    tf.contrib.summary.scalar('psnr_holdout', psnr)
-                    tf.contrib.summary.image('rgb_holdout', target[tf.newaxis])
+                    tf.compat.v2.summary.scalar(name='psnr_holdout', data=psnr, step=tf.compat.v1.train.get_or_create_global_step())
+                    tf.compat.v2.summary.image(name='rgb_holdout', data=target[tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
 
                 if args.N_importance > 0:
 
                     with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                        tf.contrib.summary.image(
-                            'rgb0', to8b(extras['rgb0'])[tf.newaxis])
-                        tf.contrib.summary.image(
-                            'disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis])
-                        tf.contrib.summary.image(
-                            'z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis])
+                        tf.compat.v2.summary.image(
+                            name='rgb0', data=to8b(extras['rgb0'])[tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
+                        tf.compat.v2.summary.image(
+                            name='disp0', data=extras['disp0'][tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
+                        tf.compat.v2.summary.image(
+                            name='z_std', data=extras['z_std'][tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
 
         global_step.assign_add(1)
 
