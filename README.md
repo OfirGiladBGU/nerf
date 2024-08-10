@@ -122,3 +122,20 @@ Poses are stored as 3x4 numpy arrays that represent camera-to-world transformati
   booktitle={ECCV},
 }
 ```
+
+
+# Notes to self:
+
+Conda commands:
+- `Update Conda Base Env`: conda update -n base -c defaults conda
+- `Conda Env List`: conda env list
+- `Conda Env Remove`: conda env remove -n nerf --all
+- `Export Env`: conda env export -n nerf -f nerf.yml --no-builds
+- `Create Env`: env create -f environment.yml
+- `Repair pip`: python -m pip install --upgrade --force-reinstall pip
+- `Remove Conda Auto Activate`: conda config --set auto_activate_base false
+
+Project commands:
+- `TF Upgrade V2`: tf_upgrade_v2 --intree ../nerf --outtree ../nerf_v2 --reportfile report.txt
+- `Pillow Fix`: conda install Pillow==9.0
+- `Installing imagemagick`: pip install ImageMagic
