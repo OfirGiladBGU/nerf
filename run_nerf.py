@@ -1,9 +1,10 @@
 import os
+
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'true'
 
 import sys
-# import tensorflow as tf
+import tensorflow as tf
 import numpy as np
 import imageio
 import json
@@ -14,7 +15,6 @@ from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
 from load_blender import load_blender_data
 
-
 tf.compat.v1.enable_eager_execution()
 
 
@@ -24,11 +24,12 @@ def batchify(fn, chunk):
         return fn
 
     def ret(inputs):
-        return tf.concat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0)
+        return tf.concat([fn(inputs[i:i + chunk]) for i in range(0, inputs.shape[0], chunk)], 0)
+
     return ret
 
 
-def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
+def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64):
     """Prepares inputs and applies network 'fn'."""
 
     inputs_flat = tf.reshape(inputs, [-1, inputs.shape[-1]])
@@ -106,10 +107,12 @@ def render_rays(ray_batch,
           weights: [num_rays, num_samples]. Weights assigned to each sampled color.
           depth_map: [num_rays]. Estimated distance to object.
         """
+
         # Function for computing density from model prediction. This value is
         # strictly between [0, 1].
-        def raw2alpha(raw, dists, act_fn=tf.nn.relu): return 1.0 - \
-            tf.exp(-act_fn(raw) * dists)
+        def raw2alpha(raw, dists, act_fn=tf.nn.relu):
+            return 1.0 - \
+                tf.exp(-act_fn(raw) * dists)
 
         # Compute 'distance' (in time) between each integration time along a ray.
         dists = z_vals[..., 1:] - z_vals[..., :-1]
@@ -126,7 +129,7 @@ def render_rays(ray_batch,
         # Extract RGB of each sample position along each ray.
         rgb = tf.math.sigmoid(raw[..., :3])  # [N_rays, N_samples, 3]
 
-        # Add noise to model's predictions for density. Can be used to 
+        # Add noise to model's predictions for density. Can be used to
         # regularize network during training (prevents floater artifacts).
         noise = 0.
         if raw_noise_std > 0.:
@@ -141,7 +144,7 @@ def render_rays(ray_batch,
         # sample yet.
         # [N_rays, N_samples]
         weights = alpha * \
-            tf.math.cumprod(1.-alpha + 1e-10, axis=-1, exclusive=True)
+                  tf.math.cumprod(1. - alpha + 1e-10, axis=-1, exclusive=True)
 
         # Computed weighted color of each sample along each ray.
         rgb_map = tf.reduce_sum(
@@ -151,15 +154,15 @@ def render_rays(ray_batch,
         depth_map = tf.reduce_sum(weights * z_vals, axis=-1)
 
         # Disparity map is inverse depth.
-        disp_map = 1./tf.maximum(1e-10, depth_map /
-                                 tf.reduce_sum(weights, axis=-1))
+        disp_map = 1. / tf.maximum(1e-10, depth_map /
+                                   tf.reduce_sum(weights, axis=-1))
 
         # Sum of weights along each ray. This value is in [0, 1] up to numerical error.
         acc_map = tf.reduce_sum(weights, -1)
 
         # To composite onto a white background, use the accumulated alpha map.
         if white_bkgd:
-            rgb_map = rgb_map + (1.-acc_map[..., None])
+            rgb_map = rgb_map + (1. - acc_map[..., None])
 
         return rgb_map, disp_map, acc_map, weights, depth_map
 
@@ -183,10 +186,10 @@ def render_rays(ray_batch,
     if not lindisp:
         # Space integration times linearly between 'near' and 'far'. Same
         # integration points will be used for all rays.
-        z_vals = near * (1.-t_vals) + far * (t_vals)
+        z_vals = near * (1. - t_vals) + far * (t_vals)
     else:
         # Sample linearly in inverse depth (disparity).
-        z_vals = 1./(1./near * (1.-t_vals) + 1./far * (t_vals))
+        z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
     z_vals = tf.broadcast_to(z_vals, [N_rays, N_samples])
 
     # Perturb sampling time along each ray.
@@ -201,7 +204,7 @@ def render_rays(ray_batch,
 
     # Points in space to evaluate model at.
     pts = rays_o[..., None, :] + rays_d[..., None, :] * \
-        z_vals[..., :, None]  # [N_rays, N_samples, 3]
+          z_vals[..., :, None]  # [N_rays, N_samples, 3]
 
     # Evaluate model at each point.
     raw = network_query_fn(pts, viewdirs, network_fn)  # [N_rays, N_samples, 4]
@@ -221,7 +224,7 @@ def render_rays(ray_batch,
         # Obtain all points to evaluate color, density at.
         z_vals = tf.sort(tf.concat([z_vals, z_samples], -1), -1)
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
-            z_vals[..., :, None]  # [N_rays, N_samples + N_importance, 3]
+              z_vals[..., :, None]  # [N_rays, N_samples + N_importance, 3]
 
         # Make predictions with network_fine.
         run_fn = network_fn if network_fine is None else network_fine
@@ -244,11 +247,11 @@ def render_rays(ray_batch,
     return ret
 
 
-def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
+def batchify_rays(rays_flat, chunk=1024 * 32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], **kwargs)
+        ret = render_rays(rays_flat[i:i + chunk], **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -259,7 +262,7 @@ def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
 
 
 def render(H, W, focal,
-           chunk=1024*32, rays=None, c2w=None, ndc=True,
+           chunk=1024 * 32, rays=None, c2w=None, ndc=True,
            near=0., far=1.,
            use_viewdirs=False, c2w_staticcam=None,
            **kwargs):
@@ -278,7 +281,7 @@ def render(H, W, focal,
       near: float or array of shape [batch_size]. Nearest distance for a ray.
       far: float or array of shape [batch_size]. Farthest distance for a ray.
       use_viewdirs: bool. If True, use viewing direction of a point in space in model.
-      c2w_staticcam: array of shape [3, 4]. If not None, use this transformation matrix for 
+      c2w_staticcam: array of shape [3, 4]. If not None, use this transformation matrix for
        camera while using other c2w argument for viewing directions.
 
     Returns:
@@ -317,7 +320,7 @@ def render(H, W, focal,
     rays_o = tf.cast(tf.reshape(rays_o, [-1, 3]), dtype=tf.float32)
     rays_d = tf.cast(tf.reshape(rays_d, [-1, 3]), dtype=tf.float32)
     near, far = near * \
-        tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
+                tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
 
     # (ray origin, ray direction, min dist, max dist) for each ray
     rays = tf.concat([rays_o, rays_d, near, far], axis=-1)
@@ -338,14 +341,13 @@ def render(H, W, focal,
 
 
 def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
-
     H, W, focal = hwf
 
     if render_factor != 0:
         # Render downsampled for speed
-        H = H//render_factor
-        W = W//render_factor
-        focal = focal/render_factor
+        H = H // render_factor
+        W = W // render_factor
+        focal = focal / render_factor
 
     rgbs = []
     disps = []
@@ -404,11 +406,12 @@ def create_nerf(args):
         grad_vars += model_fine.trainable_variables
         models['model_fine'] = model_fine
 
-    def network_query_fn(inputs, viewdirs, network_fn): return run_network(
-        inputs, viewdirs, network_fn,
-        embed_fn=embed_fn,
-        embeddirs_fn=embeddirs_fn,
-        netchunk=args.netchunk)
+    def network_query_fn(inputs, viewdirs, network_fn):
+        return run_network(
+            inputs, viewdirs, network_fn,
+            embed_fn=embed_fn,
+            embeddirs_fn=embeddirs_fn,
+            netchunk=args.netchunk)
 
     render_kwargs_train = {
         'network_query_fn': network_query_fn,
@@ -460,7 +463,6 @@ def create_nerf(args):
 
 
 def config_parser():
-
     import configargparse
     parser = configargparse.ArgumentParser()
     parser.add_argument('--config', is_config_file=True,
@@ -480,15 +482,15 @@ def config_parser():
                         default=8, help='layers in fine network')
     parser.add_argument("--netwidth_fine", type=int, default=256,
                         help='channels per layer in fine network')
-    parser.add_argument("--N_rand", type=int, default=32*32*4,
+    parser.add_argument("--N_rand", type=int, default=32 * 32 * 4,
                         help='batch size (number of random rays per gradient step)')
     parser.add_argument("--lrate", type=float,
                         default=5e-4, help='learning rate')
     parser.add_argument("--lrate_decay", type=int, default=250,
                         help='exponential learning rate decay (in 1000s)')
-    parser.add_argument("--chunk", type=int, default=1024*32,
+    parser.add_argument("--chunk", type=int, default=1024 * 32,
                         help='number of rays processed in parallel, decrease if running out of memory')
-    parser.add_argument("--netchunk", type=int, default=1024*64,
+    parser.add_argument("--netchunk", type=int, default=1024 * 64,
                         help='number of pts sent through network in parallel, decrease if running out of memory')
     parser.add_argument("--no_batching", action='store_true',
                         help='only take random rays from 1 image at a time')
@@ -498,12 +500,12 @@ def config_parser():
                         help='specific weights npy file to reload for coarse network')
     parser.add_argument("--random_seed", type=int, default=None,
                         help='fix random seed for repeatability')
-    
+
     # pre-crop options
     parser.add_argument("--precrop_iters", type=int, default=0,
                         help='number of steps to train on central crops')
     parser.add_argument("--precrop_frac", type=float,
-                        default=.5, help='fraction of img taken for central crops')    
+                        default=.5, help='fraction of img taken for central crops')
 
     # rendering options
     parser.add_argument("--N_samples", type=int, default=64,
@@ -559,25 +561,24 @@ def config_parser():
                         help='will take every 1/N images as LLFF test set, paper uses 8')
 
     # logging/saving options
-    parser.add_argument("--i_print",   type=int, default=100,
+    parser.add_argument("--i_print", type=int, default=100,
                         help='frequency of console printout and metric loggin')
-    parser.add_argument("--i_img",     type=int, default=500,
+    parser.add_argument("--i_img", type=int, default=500,
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=10000,
                         help='frequency of weight ckpt saving')
     parser.add_argument("--i_testset", type=int, default=50000,
                         help='frequency of testset saving')
-    parser.add_argument("--i_video",   type=int, default=50000,
+    parser.add_argument("--i_video", type=int, default=50000,
                         help='frequency of render_poses video saving')
 
     return parser
 
 
 def train():
-
     parser = config_parser()
     args = parser.parse_args()
-    
+
     if args.random_seed is not None:
         print('Fixing random seed', args.random_seed)
         np.random.seed(args.random_seed)
@@ -624,7 +625,7 @@ def train():
         far = 6.
 
         if args.white_bkgd:
-            images = images[..., :3]*images[..., -1:] + (1.-images[..., -1:])
+            images = images[..., :3] * images[..., -1:] + (1. - images[..., -1:])
         else:
             images = images[..., :3]
 
@@ -639,8 +640,8 @@ def train():
         i_train, i_val, i_test = i_split
 
         hemi_R = np.mean(np.linalg.norm(poses[:, :3, -1], axis=-1))
-        near = hemi_R-1.
-        far = hemi_R+1.
+        near = hemi_R - 1.
+        far = hemi_R + 1.
 
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
@@ -667,6 +668,9 @@ def train():
         f = os.path.join(basedir, expname, 'config.txt')
         with open(f, 'w') as file:
             file.write(open(args.config, 'r').read())
+
+    testimgdir = os.path.join(basedir, expname, 'tboard_val_imgs')
+    os.makedirs(testimgdir, exist_ok=True)
 
     # Create nerf model
     render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf(
@@ -751,9 +755,9 @@ def train():
     print('VAL views are', i_val)
 
     # Summary writers
-    writer = tf.compat.v2.summary.create_file_writer(
-        logdir=os.path.join(basedir, 'summaries', expname))
-    writer.set_as_default()
+    writer = tf.summary.create_file_writer(
+        os.path.join(basedir, 'summaries', expname))
+    # writer.set_as_default()
 
     for i in range(start, N_iters):
         time0 = time.time()
@@ -762,7 +766,7 @@ def train():
 
         if use_batching:
             # Random over all images
-            batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
+            batch = rays_rgb[i_batch:i_batch + N_rand]  # [B, 2+1, 3*?]
             batch = tf.transpose(batch, [1, 0, 2])
 
             # batch_rays[i, n, xyz] = ray origin or direction, example_id, 3D position
@@ -783,14 +787,14 @@ def train():
             if N_rand is not None:
                 rays_o, rays_d = get_rays(H, W, focal, pose)
                 if i < args.precrop_iters:
-                    dH = int(H//2 * args.precrop_frac)
-                    dW = int(W//2 * args.precrop_frac)
+                    dH = int(H // 2 * args.precrop_frac)
+                    dW = int(W // 2 * args.precrop_frac)
                     coords = tf.stack(tf.meshgrid(
-                        tf.range(H//2 - dH, H//2 + dH), 
-                        tf.range(W//2 - dW, W//2 + dW), 
+                        tf.range(H // 2 - dH, H // 2 + dH),
+                        tf.range(W // 2 - dW, W // 2 + dW),
                         indexing='ij'), -1)
                     if i < 10:
-                        print('precrop', dH, dW, coords[0,0], coords[-1,-1])
+                        print('precrop', dH, dW, coords[0, 0], coords[-1, -1])
                 else:
                     coords = tf.stack(tf.meshgrid(
                         tf.range(H), tf.range(W), indexing='ij'), -1)
@@ -827,7 +831,7 @@ def train():
         gradients = tape.gradient(loss, grad_vars)
         optimizer.apply_gradients(zip(gradients, grad_vars))
 
-        dt = time.time()-time0
+        dt = time.time() - time0
 
         #####           end            #####
 
@@ -836,7 +840,8 @@ def train():
         def save_weights(net, prefix, i):
             path = os.path.join(
                 basedir, expname, '{}_{:06d}.npy'.format(prefix, i))
-            np.save(path, net.get_weights())
+            # np.save(path, net.get_weights())
+            np.save(path, np.asanyarray(net.get_weights(), object))
             print('saved weights at', path)
 
         if i % args.i_weights == 0:
@@ -876,12 +881,13 @@ def train():
 
             print(expname, i, psnr.numpy(), loss.numpy(), global_step.numpy())
             print('iter time {:.05f}'.format(dt))
-            with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
-                tf.compat.v2.summary.scalar(name='loss', data=loss, step=tf.compat.v1.train.get_or_create_global_step())
-                tf.compat.v2.summary.scalar(name='psnr', data=psnr, step=tf.compat.v1.train.get_or_create_global_step())
-                tf.compat.v2.summary.histogram(name='tran', data=trans, step=tf.compat.v1.train.get_or_create_global_step())
+            # with tf.summary.record_summaries_every_n_global_steps(args.i_print):
+            with writer.as_default():
+                tf.summary.scalar('loss', loss, step=i)
+                tf.summary.scalar('psnr', psnr, step=i)
+                tf.summary.histogram('tran', trans, step=i)
                 if args.N_importance > 0:
-                    tf.compat.v2.summary.scalar(name='psnr0', data=psnr0, step=tf.compat.v1.train.get_or_create_global_step())
+                    tf.summary.scalar('psnr0', psnr0, step=i)
 
             if i % args.i_img == 0:
 
@@ -894,33 +900,34 @@ def train():
                                                 **render_kwargs_test)
 
                 psnr = mse2psnr(img2mse(rgb, target))
-                
+
                 # Save out the validation image for Tensorboard-free monitoring
-                testimgdir = os.path.join(basedir, expname, 'tboard_val_imgs')
-                if i==0:
-                    os.makedirs(testimgdir, exist_ok=True)
+
+                # testimgdir = os.path.join(basedir, expname, 'tboard_val_imgs')
+                # if i==0:
+                #     os.makedirs(testimgdir, exist_ok=True)
                 imageio.imwrite(os.path.join(testimgdir, '{:06d}.png'.format(i)), to8b(rgb))
 
-                with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
+                # with tf.summary.record_summaries_every_n_global_steps(args.i_img):
+                with writer.as_default():
+                    tf.summary.image('rgb', to8b(rgb)[tf.newaxis], step=i)
+                    tf.summary.image(
+                        'disp', disp[tf.newaxis, ..., tf.newaxis], step=i)
+                    tf.summary.image(
+                        'acc', acc[tf.newaxis, ..., tf.newaxis], step=i)
 
-                    tf.compat.v2.summary.image(name='rgb', data=to8b(rgb)[tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
-                    tf.compat.v2.summary.image(
-                        name='disp', data=disp[tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
-                    tf.compat.v2.summary.image(
-                        name='acc', data=acc[tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
-
-                    tf.compat.v2.summary.scalar(name='psnr_holdout', data=psnr, step=tf.compat.v1.train.get_or_create_global_step())
-                    tf.compat.v2.summary.image(name='rgb_holdout', data=target[tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
+                    tf.summary.scalar('psnr_holdout', psnr, step=i)
+                    tf.summary.image('rgb_holdout', target[tf.newaxis], step=i)
 
                 if args.N_importance > 0:
-
-                    with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                        tf.compat.v2.summary.image(
-                            name='rgb0', data=to8b(extras['rgb0'])[tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
-                        tf.compat.v2.summary.image(
-                            name='disp0', data=extras['disp0'][tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
-                        tf.compat.v2.summary.image(
-                            name='z_std', data=extras['z_std'][tf.newaxis, ..., tf.newaxis], step=tf.compat.v1.train.get_or_create_global_step())
+                    # with tf.summary.record_summaries_every_n_global_steps(args.i_img):
+                    with writer.as_default():
+                        tf.summary.image(
+                            'rgb0', to8b(extras['rgb0'])[tf.newaxis], step=i)
+                        tf.summary.image(
+                            'disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis], step=i)
+                        tf.summary.image(
+                            'z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis], step=i)
 
         global_step.assign_add(1)
 
